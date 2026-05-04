@@ -1,0 +1,14 @@
+extraction:
+  mode: "nadir" 
+  # mode: "grid"
+
+  fov: 90
+  output_size: [512, 512]
+
+  nadir:
+    pitch: -85
+    yaw_list: [0, 120, 240]
+
+  grid:
+    yaw_list: [0, 45, 90, 135, 180, 225, 270, 315]
+    pitch_list: [-90, -60, -30, 0, 30, 60]

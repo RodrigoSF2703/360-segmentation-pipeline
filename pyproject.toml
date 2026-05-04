@@ -1,0 +1,13 @@
+[project]
+name = "360-segmentation-pipeline"
+version = "0.1.0"
+description = "Pipeline for segmentation in 360 images"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "py360convert",
+    "tqdm",
+    "pyyaml"
+]

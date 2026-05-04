@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.pyc
+
+data/raw/
+data/intermediate/
+data/processed/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python tooling
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Modelos / artefatos pesados
+*.pt
+*.pth
+*.onnx
+runs/
