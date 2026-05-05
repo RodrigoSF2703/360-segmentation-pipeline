@@ -65,18 +65,22 @@ tools/
 
 ### ✔ Extração de vistas
 
-* Processamento em lote (~300 imagens em ~47s)
-* Estratégia focada no nadir:
+Três modos disponíveis via [configs/pipeline.yaml](configs/pipeline.yaml):
 
-  * pitch ≈ -85°
-  * yaw ∈ [0°, 120°, 240°]
-* Geração de múltiplas vistas por imagem
-* Cada vista inclui imagem perspectiva + metadados (yaw, pitch, FOV, tamanho)
+* `single`: uma vista (yaw + pitch escalares).
+* `nadir_multi`: N yaws com pitch fixo (default: pitch=-85, yaws=[0, 120, 240]).
+  Foi o modo usado para gerar as máscaras do nadir, com overlap entre as três
+  vistas alimentando a fusão.
+* `grid`: varredura por incrementos de yaw e pitch (`yaw_step`, `pitch_step`).
+  Os polos exatos são pulados, porque a perspectiva degenera lá.
+
+Cada vista inclui imagem perspectiva + metadados (yaw, pitch, FOV, tamanho).
+Processamento em lote: ~300 imagens em ~47s no modo `nadir_multi`.
 
 ### ✔ Segmentação zero-shot (LangSAM)
 
 * Prompt textual (ex: `"person on a motorcycle"`)
-* Inferência por vista plana — distorção drasticamente reduzida vs. inferir direto no equiretangular
+* Inferência por vista plana, onde a distorção é menor do que no equiretangular cru
 
 ### ✔ Reprojeção e fusão equiretangular
 
@@ -87,20 +91,18 @@ tools/
 
 ## 🧭 Reprojeção e a "pegadinha" geométrica
 
-A reprojeção das máscaras planas de volta ao equiretangular é a etapa
-matematicamente mais sensível, porque a área coberta por um pixel da vista
-plana cresce muito conforme se aproxima do polo. Como o nadir é exatamente
-onde a moto e o condutor estão, é nessa região que a distorção mais aparece.
+A reprojeção das máscaras planas de volta ao equiretangular é a parte mais
+delicada do pipeline. A área coberta por um pixel da vista plana cresce
+conforme se aproxima do polo, e como o nadir é onde a moto e o condutor
+estão, é lá que a distorção mais aparece.
 
-A abordagem ingênua (forward mapping) varre os pixels da vista plana e escreve
-no equiretangular. Perto do polo um único pixel plano cobre uma região larga
-do equiretangular, então a máscara final fica pontilhada, com buracos entre
-amostras.
+Forward mapping (varrer pixels da vista plana e escrever no equiretangular)
+não funciona bem aqui: perto do polo um pixel plano cobre uma região larga
+do equiretangular, e a máscara final acaba pontilhada, com buracos.
 
-Para evitar isso, o `Reprojector` usa inverse mapping: varre os pixels do
-equiretangular e, para cada um, calcula de qual pixel da vista plana ele veio.
-A amostragem é feita com `cv2.remap`, em uma chamada vetorizada por vista. As
-etapas são:
+O `Reprojector` faz o caminho inverso: varre os pixels do equiretangular e,
+para cada um, calcula de qual pixel da vista plana ele veio. A amostragem
+fica em uma única chamada de `cv2.remap` por vista. As etapas são:
 
 1. Converter cada pixel `(u, v)` do equiretangular em um vetor unitário 3D
    na esfera (longitude/latitude para XYZ).
@@ -112,8 +114,9 @@ etapas são:
    (coordenada `-1`).
 6. `cv2.remap` com `INTER_NEAREST` e `BORDER_CONSTANT=0` faz a amostragem.
 
-A convenção de eixos segue o `py360convert` usado na extração, para evitar
-inconsistência entre as duas pontas (ver docstring de [Reprojector](src/reprojection/reprojector.py)).
+A convenção de eixos segue o `py360convert` usado na extração — assim o
+yaw/pitch da vista plana significa a mesma coisa nas duas etapas (detalhes
+na docstring de [Reprojector](src/reprojection/reprojector.py)).
 
 ### Fusão de máscaras com overlap
 

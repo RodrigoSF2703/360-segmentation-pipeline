@@ -9,5 +9,9 @@ dependencies = [
     "opencv-python",
     "py360convert",
     "tqdm",
-    "pyyaml"
+    "pyyaml",
+    "Pillow",
+    "torch",
+    "torchvision",
+    "lang-sam"
 ]

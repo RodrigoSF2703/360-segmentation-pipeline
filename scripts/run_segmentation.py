@@ -1,6 +1,7 @@
 import os
 import cv2
 import json
+import yaml
 import numpy as np
 from tqdm import tqdm
 
@@ -16,12 +17,26 @@ OUTPUT_MASK_DIR = "data/processed/masks"
 os.makedirs(OUTPUT_IMG_DIR, exist_ok=True)
 os.makedirs(OUTPUT_MASK_DIR, exist_ok=True)
 
-# 🔥 CONTROLE (reduzido para teste)
-MAX_IMAGES = 20
-MAX_VIEWS = 15
+
+def load_config():
+    with open("configs/pipeline.yaml", "r") as f:
+        return yaml.safe_load(f)
+
 
 def main():
-    segmenter = LangSAMSegmenter()
+    config = load_config()
+
+    # 🔥 CONFIG SEGMENTAÇÃO
+    segmenter = LangSAMSegmenter(
+        prompt=config["segmentation"]["prompt"],
+        box_threshold=config["segmentation"]["box_threshold"],
+        text_threshold=config["segmentation"]["text_threshold"],
+    )
+
+    # 🔥 CONFIG EXECUÇÃO
+    MAX_IMAGES = config.get("run", {}).get("max_images", 20)
+    MAX_VIEWS = config.get("run", {}).get("max_views", 15)
+    FUSE_THRESHOLD = config.get("reprojection", {}).get("fuse_threshold", 1)
 
     folders = os.listdir(BASE_VIEWS_DIR)[:MAX_IMAGES]
 
@@ -57,11 +72,7 @@ def main():
                 continue
 
             # 🔥 SEGMENTAÇÃO
-            try:
-                mask = segmenter.segment(image)
-            except Exception as e:
-                print("[ERRO LangSAM]", e)
-                continue
+            mask = segmenter.segment(image)
 
             if mask is None or mask.sum() == 0:
                 continue
@@ -73,13 +84,16 @@ def main():
             # 🔥 REPROJEÇÃO
             canvases.append(reprojector.reproject_mask(mask, metadata))
 
-        # 🔥 FUSÃO POR VOTO (threshold=1 = união; aumentar exige overlap entre vistas)
+        # 🔥 FUSÃO
         if canvases:
-            final_mask = Reprojector.fuse_masks(canvases, threshold=1)
+            final_mask = Reprojector.fuse_masks(
+                canvases,
+                threshold=FUSE_THRESHOLD,
+            )
         else:
             final_mask = np.zeros((H, W), dtype=np.uint8)
 
-        # 🔥 SALVAR RESULTADO FINAL
+        # 🔥 SALVAR
         out_img_path = os.path.join(OUTPUT_IMG_DIR, folder + ".png")
         out_mask_path = os.path.join(OUTPUT_MASK_DIR, folder + ".png")
 
@@ -87,6 +101,7 @@ def main():
         cv2.imwrite(out_mask_path, final_mask)
 
         print(f"✔️ Salvo: {folder}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,14 +1,51 @@
-extraction:
-  mode: "nadir" 
-  # mode: "grid"
+# =========================
+# EXTRAÇÃO DE VISTAS
+# =========================
+# Modos:
+#   single       -> 1 vista (yaw + pitch escalares)
+#   nadir_multi  -> N yaws com pitch fixo
+#   grid         -> varredura por incrementos de yaw e pitch
+mode: nadir_multi
 
-  fov: 90
-  output_size: [512, 512]
+fov: 90
+output_size: [512, 512]
 
-  nadir:
-    pitch: -85
-    yaw_list: [0, 120, 240]
+single:
+  yaw: 0
+  pitch: -85
 
-  grid:
-    yaw_list: [0, 45, 90, 135, 180, 225, 270, 315]
-    pitch_list: [-90, -60, -30, 0, 30, 60]
+nadir_multi:
+  pitch: -85
+  yaw_list: [0, 120, 240]
+
+grid:
+  yaw_step: 45
+  pitch_step: 30
+
+# =========================
+# SEGMENTAÇÃO
+# =========================
+segmentation:
+  prompt: "person on a motorcycle"
+  box_threshold: 0.3
+  text_threshold: 0.25
+
+# =========================
+# REPROJEÇÃO
+# =========================
+reprojection:
+  fuse_threshold: 1
+
+# =========================
+# EXECUÇÃO (controle de batch)
+# =========================
+run:
+  max_images: 20
+  max_views: 15
+
+# =========================
+# REFINAMENTO (ainda não usado)
+# =========================
+refinement:
+  enabled: false
+  min_area: 500
