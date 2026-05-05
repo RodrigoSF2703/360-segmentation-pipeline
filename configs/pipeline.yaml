@@ -44,8 +44,11 @@ run:
   max_views: 15
 
 # =========================
-# REFINAMENTO (ainda não usado)
+# REFINAMENTO
 # =========================
 refinement:
-  enabled: false
+  enabled: true
+  kernel_size: 5
   min_area: 500
+  use_grabcut: false
+  grabcut_iter: 5

@@ -87,6 +87,12 @@ Processamento em lote: ~300 imagens em ~47s no modo `nadir_multi`.
 * Inverse mapping vetorizado com `cv2.remap`
 * Fusão por voto com threshold configurável
 
+### ✔ Refinamento clássico
+
+* Morfologia OPEN seguida de CLOSE (remove ruído isolado e fecha buracos)
+* Filtro por componente conexo: descarta blobs com área menor que `min_area`
+* GrabCut opcional, refina contornos a partir do bounding box do maior componente
+
 ---
 
 ## 🧭 Reprojeção e a "pegadinha" geométrica
@@ -132,6 +138,31 @@ para a etapa de refinamento clássico.
 
 ---
 
+## 🧹 Refinamento de máscaras
+
+A máscara fundida ainda traz ruído: falsos positivos isolados vindos de alguma
+vista, e buracos dentro do objeto herdados das máscaras planas. O `MaskRefiner`
+([src/refinement/refiner.py](src/refinement/refiner.py)) aplica algumas
+técnicas clássicas em sequência:
+
+1. **Morfologia OPEN** (erosão + dilatação) com kernel quadrado: remove ruído
+   pontilhado e blobs finos.
+2. **Morfologia CLOSE** (dilatação + erosão): fecha buracos pequenos dentro do
+   objeto.
+3. **Filtro por área** sobre componentes conexos
+   (`cv2.connectedComponentsWithStats`): descarta tudo abaixo de `min_area`
+   pixels. Como a moto + condutor formam um bloco grande no nadir, esse filtro
+   derruba boa parte dos falsos positivos sem mexer no objeto real.
+4. **GrabCut opcional** sobre o bounding box do maior componente, usando a
+   máscara morfológica como prior. Refina o contorno levando em conta a cor
+   da imagem original. Custa caro (segundos por chamada) e fica desligado por
+   default.
+
+Os parâmetros (`kernel_size`, `min_area`, `use_grabcut`, `grabcut_iter`)
+ficam na seção `refinement:` do [pipeline.yaml](configs/pipeline.yaml).
+
+---
+
 ## 🛠 Instalação
 
 ```bash
@@ -166,7 +197,6 @@ python -m scripts.run_segmentation
 
 ## 📌 Próximos passos
 
-* Refinamento com técnicas clássicas (morfológicas, GrabCut, limiarização)
 * Treinamento de modelo especialista (YOLO-seg)
 * Exportação ONNX + benchmark CPU
 * Imagens de exemplo (original 360° vs. máscara final)
