@@ -25,3 +25,7 @@ dist/
 *.pth
 *.onnx
 runs/
+
+# Artefatos de debug gerados na raiz pelos scripts em tools/
+/langsam_*.png
+/reprojected_*.png
