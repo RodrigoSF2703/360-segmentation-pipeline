@@ -13,5 +13,6 @@ dependencies = [
     "Pillow",
     "torch",
     "torchvision",
-    "lang-sam"
+    "lang-sam",
+    "ultralytics"
 ]

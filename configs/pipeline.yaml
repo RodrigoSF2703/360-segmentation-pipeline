@@ -40,7 +40,7 @@ reprojection:
 # EXECUÇÃO (controle de batch)
 # =========================
 run:
-  max_images: 20
+  max_images: 300
   max_views: 15
 
 # =========================
@@ -52,3 +52,18 @@ refinement:
   min_area: 500
   use_grabcut: false
   grabcut_iter: 5
+
+# =========================
+# TREINAMENTO (YOLOv8-seg)
+# =========================
+# Para GPU, troque device: 0. epochs/imgsz/batch ditam o tempo total.
+training:
+  base_model: yolov8n-seg.pt
+  data_yaml: data/processed/yolo_dataset/data.yaml
+  epochs: 90
+  imgsz: 640
+  batch: 16
+  device: cpu
+  patience: 20
+  project: train_runs
+  name: yolov8n_seg

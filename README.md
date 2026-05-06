@@ -52,8 +52,10 @@ src/
   evaluation/         métricas e benchmark
 
 scripts/
-  run_annotation.py     extração de vistas
-  run_segmentation.py   segmentação + reprojeção + fusão
+  run_annotation.py        extração de vistas
+  run_segmentation.py      segmentação + reprojeção + fusão
+  run_dataset_builder.py   máscaras -> dataset YOLO-seg
+  run_training.py          treino do modelo especialista
 
 tools/
   scripts auxiliares para debug e exploração
@@ -92,6 +94,14 @@ Processamento em lote: ~300 imagens em ~47s no modo `nadir_multi`.
 * Morfologia OPEN seguida de CLOSE (remove ruído isolado e fecha buracos)
 * Filtro por componente conexo: descarta blobs com área menor que `min_area`
 * GrabCut opcional, refina contornos a partir do bounding box do maior componente
+
+### ✔ Treinamento (YOLOv8-seg)
+
+* Builder converte `(imagem 360°, máscara)` em formato YOLO-seg (polígonos
+  normalizados) com split 80/20
+* Treino feito com transfer learning a partir do `yolov8n-seg.pt`
+* Classe única `motorcycle_person` — moto e condutor tratados como bloco
+  único (ver nota abaixo)
 
 ---
 
@@ -163,6 +173,39 @@ ficam na seção `refinement:` do [pipeline.yaml](configs/pipeline.yaml).
 
 ---
 
+## 🎓 Treinamento
+
+A rede especialista é uma **YOLOv8-seg**, treinada com transfer learning a
+partir do checkpoint `yolov8n-seg.pt`. O ground truth são as máscaras
+refinadas geradas no passo anterior (auto-anotação).
+
+### Classe única
+
+Treino com uma classe só, `motorcycle_person`, em vez de separar em
+`motorcycle` + `person`. No nadir os dois aparecem sempre juntos, com bastante
+oclusão entre pernas, tanque e guidão, e o enunciado pede para segmentar o
+**conjunto**. Manter unido evita o trabalho extra de delimitar duas instâncias
+que sempre se cruzam.
+
+### Builder de dataset
+
+O [YOLODatasetBuilder](src/training/dataset_builder.py) converte os pares
+`(imagem 360°, máscara)` em `data/processed/` para o formato YOLO-seg:
+
+* Extrai contornos externos da máscara binária com `cv2.findContours`
+* Simplifica o polígono com `cv2.approxPolyDP` (~0.2% de tolerância)
+* Normaliza coordenadas para `[0, 1]` e exige pelo menos 3 pontos por polígono
+* Faz split 80/20 train/val com seed fixa
+* Gera `data.yaml` com path absoluto para o ultralytics não depender do cwd
+
+### Hiperparâmetros
+
+Configurados na seção `training:` do [pipeline.yaml](configs/pipeline.yaml):
+`base_model`, `epochs`, `imgsz`, `batch`, `device` (`cpu` ou índice de GPU),
+`patience`, `project`, `name`. Ajustar conforme hardware disponível.
+
+---
+
 ## 🛠 Instalação
 
 ```bash
@@ -185,6 +228,18 @@ Segmentação zero-shot + reprojeção + fusão:
 python -m scripts.run_segmentation
 ```
 
+Conversão das máscaras para formato YOLO-seg:
+
+```bash
+python -m scripts.run_dataset_builder
+```
+
+Treinamento da rede especialista:
+
+```bash
+python -m scripts.run_training
+```
+
 ---
 
 ## 📊 Desempenho
@@ -192,12 +247,15 @@ python -m scripts.run_segmentation
 * Extração: ~6 imagens/s, ~900 vistas para ~300 imagens
 * Reprojeção: vetorizada com `cv2.remap`, processa as 3 vistas de uma imagem
   5760x2880 em poucos segundos por imagem
+* Treino YOLOv8n-seg: 90 epochs em ~3.3h em CPU (Ryzen 5 5600G), 239 train / 60 val,
+  Mask mAP50 ≈ 0.61 e mAP50-95 ≈ 0.48 no holdout
+
+> Métricas em ONNX/CPU (FPS, IoU final) ficam para a próxima etapa.
 
 ---
 
 ## 📌 Próximos passos
 
-* Treinamento de modelo especialista (YOLO-seg)
 * Exportação ONNX + benchmark CPU
 * Imagens de exemplo (original 360° vs. máscara final)
 * Métricas finais (IoU, mAP, FPS em CPU)
