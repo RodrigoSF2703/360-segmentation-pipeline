@@ -14,5 +14,8 @@ dependencies = [
     "torch",
     "torchvision",
     "lang-sam",
-    "ultralytics"
+    "ultralytics",
+    "onnxruntime",
+    "onnx",
+    "onnxslim"
 ]

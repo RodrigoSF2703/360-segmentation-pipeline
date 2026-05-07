@@ -56,6 +56,8 @@ scripts/
   run_segmentation.py      segmentação + reprojeção + fusão
   run_dataset_builder.py   máscaras -> dataset YOLO-seg
   run_training.py          treino do modelo especialista
+  export_onnx.py           best.pt -> ONNX
+  run_inference_onnx.py    avaliação em CPU + exemplos
 
 tools/
   scripts auxiliares para debug e exploração
@@ -102,6 +104,13 @@ Processamento em lote: ~300 imagens em ~47s no modo `nadir_multi`.
 * Treino feito com transfer learning a partir do `yolov8n-seg.pt`
 * Classe única `motorcycle_person` — moto e condutor tratados como bloco
   único (ver nota abaixo)
+
+### ✔ Exportação ONNX + benchmark CPU
+
+* `best.pt` exportado para `.onnx` via `model.export(format="onnx")`
+* Inferência via `ONNXSegmenter` carregado pelo wrapper do ultralytics, com
+  `CPUExecutionProvider` do `onnxruntime`
+* IoU médio + FPS medidos no holdout val
 
 ---
 
@@ -206,6 +215,25 @@ Configurados na seção `training:` do [pipeline.yaml](configs/pipeline.yaml):
 
 ---
 
+## ⚡ Inferência ONNX em CPU
+
+O `best.pt` é exportado para `.onnx` e a avaliação roda **estritamente em CPU**:
+o `ONNXSegmenter` ([src/evaluation/onnx_runner.py](src/evaluation/onnx_runner.py))
+carrega o `.onnx` via wrapper do ultralytics, que internamente usa o
+`onnxruntime` com `CPUExecutionProvider` quando `device="cpu"`. O wrapper
+mantém o pós-processamento padrão da YOLOv8-seg (NMS + expansão de prototypes
+em instance masks), evitando reimplementar essa parte.
+
+### Métrica escolhida
+
+A avaliação usa **IoU médio** sobre o holdout val. mAP faria mais sentido se
+estivéssemos comparando detecções com bounding boxes em múltiplas confidences;
+como o ground truth é uma máscara binária por imagem (single-class
+`motorcycle_person`, instâncias fundidas em um bloco só), IoU pixel-a-pixel
+compara máscara prevista contra ground truth de forma direta.
+
+---
+
 ## 🛠 Instalação
 
 ```bash
@@ -215,6 +243,23 @@ pip install -e .
 ---
 
 ## 🧪 Execução
+
+### Pipeline completo
+
+Ordem de execução ponta a ponta, partindo das imagens 360° em `data/raw/training_images/`:
+
+```bash
+python -m scripts.run_annotation       # 1. extrai vistas planas
+python -m scripts.run_segmentation     # 2. segmenta + reprojeta + funde + refina
+python -m scripts.run_dataset_builder  # 3. monta dataset YOLO-seg
+python -m scripts.run_training         # 4. treina YOLOv8-seg
+python -m scripts.export_onnx          # 5. exporta para ONNX
+python -m scripts.run_inference_onnx   # 6. avalia em CPU + gera assets/
+```
+
+Cada etapa lê a config em [configs/pipeline.yaml](configs/pipeline.yaml).
+
+### Etapas separadas
 
 Extração de vistas:
 
@@ -240,9 +285,23 @@ Treinamento da rede especialista:
 python -m scripts.run_training
 ```
 
+Exportação para ONNX:
+
+```bash
+python -m scripts.export_onnx
+```
+
+Avaliação em CPU (IoU + FPS) e geração de exemplos em `assets/`:
+
+```bash
+python -m scripts.run_inference_onnx
+```
+
 ---
 
 ## 📊 Desempenho
+
+**Pipeline (anotação + treino):**
 
 * Extração: ~6 imagens/s, ~900 vistas para ~300 imagens
 * Reprojeção: vetorizada com `cv2.remap`, processa as 3 vistas de uma imagem
@@ -250,12 +309,58 @@ python -m scripts.run_training
 * Treino YOLOv8n-seg: 90 epochs em ~3.3h em CPU (Ryzen 5 5600G), 239 train / 60 val,
   Mask mAP50 ≈ 0.61 e mAP50-95 ≈ 0.48 no holdout
 
-> Métricas em ONNX/CPU (FPS, IoU final) ficam para a próxima etapa.
+**Resultados ONNX em CPU (Ryzen 5 5600G):**
+
+| Métrica | Valor |
+|---------|-------|
+| IoU médio (val, 60 imgs) | **0.8772** |
+| Tempo médio por imagem | 54.0 ms |
+| FPS | 18.53 |
+
+### Imagens de exemplo
+
+Lado-a-lado: original (esquerda) e máscara da moto + condutor em vermelho
+semitransparente (direita). Geradas pelo `run_inference_onnx`:
+
+![exemplo 1](assets/example_1.jpg)
+![exemplo 2](assets/example_2.jpg)
+![exemplo 3](assets/example_3.jpg)
+
+### Notas de iteração
+
+A primeira execução do pipeline ponta-a-ponta deu **IoU 0.073**, bem abaixo
+do que o Mask mAP50 ≈ 0.61 do treino sugeria. Para entender de onde vinha o
+gap, escrevi [tools/diagnose_gt.py](tools/diagnose_gt.py), que sobrepõe GT
+(verde) e predição (vermelho) na imagem original em três painéis lado a
+lado:
+
+![diagnose 1](assets/diagnose/diagnose_1.jpg)
+
+O verde estava onde deveria (moto + condutor no extremo inferior do
+equiretangular). O vermelho aparecia numa faixa cerca de 25% acima, com
+sempre o mesmo offset — descartando problema no GT e apontando para a
+inferência.
+
+A causa estava no `ONNXSegmenter`: `result.masks.data` do ultralytics
+devolve as máscaras no espaço letterboxed do modelo (640x640 com padding),
+e eu estava redimensionando direto para 5760x2880 sem desfazer o letterbox.
+Para imagem 2:1, o conteúdo ocupa as linhas 160-480 do letterbox, então a
+moto na linha 480 acabava na linha 2160 da imagem original em vez da linha
+2880.
+
+Troquei `result.masks.data` por `result.masks.xy`, que retorna polígonos já
+em coordenadas da imagem original (com o letterbox desfeito por dentro do
+ultralytics), e rasterizo com `cv2.fillPoly`. **IoU subiu para 0.8772** e o
+FPS aumentou de leve, porque rasterizar polígonos é mais barato que resize
++ threshold.
 
 ---
 
 ## 📌 Próximos passos
 
-* Exportação ONNX + benchmark CPU
-* Imagens de exemplo (original 360° vs. máscara final)
-* Métricas finais (IoU, mAP, FPS em CPU)
+Pipeline completo. Possíveis evoluções futuras:
+
+* Treinar modelo maior (yolov8s/m-seg) com mais epochs para subir o IoU além
+  de 0.88
+* Aumentar `max_images` para usar todo o dataset disponível na auto-anotação
+* Explorar augmentation específica para distorção equiretangular
