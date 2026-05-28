@@ -1,6 +1,25 @@
 # 360 Segmentation Pipeline
 
+Projeto teste da empresa **Robotitech**   
+
 Pipeline de visão computacional para **segmentação de motocicleta e condutor em imagens 360° (equiretangulares)**, com geração automática de anotações, reprojeção geométrica e treinamento de modelo especialista.
+
+---
+
+## 📋 Relatório Final da Avaliação Robotitech
+
+- **Gestão de Dependências**: No arquivo `pyproject.toml`, ausência de versões específicas das bibliotecas, comprometendo estabilidade e reprodutibilidade.
+- **Tratamento de Exceções e Validações**: Falta de blocos `try/except`; função `load_config` não verifica existência do arquivo antes da leitura.
+- **Validação de Entradas**: Sistema processa apenas JPG e PNG, mas não emite alertas ou trata exceções para outros formatos.
+- **Orientação a Objetos e Encapsulamento**:
+  - Encapsulamento inconsistente na classe `ViewExtractor`.
+  - Classe `YOLODatasetBuilder` com alvo hardcoded, quebrando a genericidade.
+- **Design e Uso de Módulos**: Módulo de configuração criado, mas não integrado aos scripts.
+- **Monitoramento**: Uso de `print` em vez de biblioteca de logging.
+- **Boas Práticas de Código e Padronização**:
+  - Variáveis globais em scripts podem causar efeitos colaterais.
+  - Falta de padrão estrutural entre scripts e nomes de funções (ex: `run_annotations` realiza extração de vistas).
+  - Ausência de docstrings padronizadas e descritivas.
 
 ---
 
